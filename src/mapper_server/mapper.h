@@ -1,8 +1,12 @@
 #pragma once
 
+#include <srrg_boss/serializer.h>
 
 #include <srrg_nicp/depth_utils.h>
 #include <srrg_core_map/base_camera_info.h>
+#include <srrg_core_map/image_map_node.h>
+#include <srrg_core_map/local_map.h>
+#include <srrg_core_map/binary_node_relation.h>
 #include <srrg_nicp/camera_info_manager.h>
 #include <srrg_nicp/pinhole_projector.h>
 
@@ -52,7 +56,7 @@ public:
     //! ctor if a = 0, it creates its own instance of Projective Aligner with a Pinhole projector;
     //! if you pass your aligner it will use that one
     //! this way you can construct a tracker based on different alignment policies
-    Mapper(std::string name, srrg_nicp::BaseProjector*p=0);
+    Mapper(std::string name, srrg_boss::Serializer* ser=0, srrg_nicp::BaseProjector*p=0);
 
     //! processes a frame, froma raw depth image, updates the transform and adds the new colud to the local map
     //! @param depth : uint16_t depth image
@@ -72,6 +76,9 @@ public:
                               const std::string& frame_id = "/camera/depth/frame_id",
                               const Eigen::Isometry3f& sensor_offset = Eigen::Isometry3f::Identity(),
                               const Eigen::Isometry3f& odom_guess = Eigen::Isometry3f::Identity());
+
+    inline srrg_boss::Serializer* serializer() const {return _serializer;}
+    inline void setSerializer(srrg_boss::Serializer* ser) {_serializer = ser;}
 
     //! access to the internal projector object
     srrg_nicp::BaseProjector& projector() { return *_projector;}
@@ -139,6 +146,19 @@ public:
 
     inline bool referenceGood() const {return _reference_good;}
 
+    srrg_core_map::MapNodeList* nodes() {return _nodes;}
+    srrg_core_map::BinaryNodeRelationSet* relations() { return _relations;}
+    void setNodes(srrg_core_map::MapNodeList* nodes_) {_nodes = nodes_;}
+
+    // min translation between two trajectory nodes
+    inline float trajectoryMinTranslation()  const { return _trajectory_min_translation; }
+    inline void setTrajectoryMinTranslation(float v)  { _trajectory_min_translation = v; }
+
+    // min orientation between two trajectory nodes
+    inline float trajectoryMinOrientation()  const { return _trajectory_min_orientation; }
+    inline void setTrajectoryMinOrientation(float v)  { _trajectory_min_orientation = v; }
+
+
     void goalCB();
     void preemptCB();
 
@@ -166,6 +186,16 @@ protected:
     int _total_points;
     bool _merging_enabled;
     float _merging_distance;
+
+    srrg_boss::Serializer* _serializer;
+    srrg_core_map::MapNodeList* _nodes;
+    srrg_core_map::BinaryNodeRelationSet* _relations;
+    float _trajectory_min_translation;
+    float _trajectory_min_orientation;
+    std::tr1::shared_ptr<srrg_core_map::LocalMap> _last_local_map, _previous_local_map;
+    std::tr1::shared_ptr<srrg_core_map::BinaryNodeRelation> _last_relation;
+    srrg_core_map::MapNodeList* _local_maps;
+    srrg_core_map::BinaryNodeRelationSet* _local_maps_relations;
 
     double _start_time;
     double _current_time;
@@ -199,6 +229,14 @@ protected:
 
     void callTriggers(TriggerEvent event);
     EventTriggerMap _triggers;
+
+    srrg_core_map::MapNode* makeNode();
+    srrg_core_map::BinaryNodeRelation* makeNodesRelation(srrg_core_map::MapNode* new_node,
+                                                         srrg_core_map::MapNode* previous_node);
+    srrg_core_map::LocalMap* makeLocalMap();
+    void saveLocalMap(srrg_core_map::LocalMap& lmap);
+    void saveCameras(srrg_nicp::CameraInfoManager& manager);
+
 };
 
 }

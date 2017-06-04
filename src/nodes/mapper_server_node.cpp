@@ -137,6 +137,13 @@ int main(int argc, char **argv) {
         }
     }
 
+    Serializer* ser = 0;
+    if(output_filename != "") {
+        ser  = new Serializer();
+        ser->setFilePath(output_filename);
+        ser->setBinaryPath(output_filename + ".d/<classname>.<nameAttribute>.<id>.<ext>");
+    }
+
     ros::init(argc, argv, "mapper_server");
     if (base_link_frame_id.length()>0){
         cerr << "making listener" << endl;
@@ -146,7 +153,7 @@ int main(int argc, char **argv) {
     image_transport::ImageTransport itr(nh);
 
     cerr << "constructing mapper ... ";
-    mapper = new Mapper(ros::this_node::getName());
+    mapper = new Mapper(ros::this_node::getName(),ser);
     if (! mapper) {
         cerr << "unknown mapper type, aborting" << endl;
         return 0;
@@ -155,24 +162,6 @@ int main(int argc, char **argv) {
     mapper->setMaxDistance(max_distance);
     cerr << " Done" << endl;
     cerr << "ALL IN PLACE" << endl;
-
-//    Serializer* ser = 0;
-//    if(output_filename != "") {
-//        ser  = new Serializer();
-//        ser->setFilePath(output_filename);
-//        ser->setBinaryPath(output_filename + ".d/<classname>.<nameAttribute>.<id>.<ext>");
-//    }
-
-//    LocalMapperTrigger* local_mapper_maker = new LocalMapperTrigger(mapper,
-//                                                      Mapper::TRACK_GOOD|
-//                                                      Mapper::TRACK_BROKEN|
-//                                                      Mapper::REFERENCE_FRAME_RESET|
-//                                                      Mapper::TRACKING_DONE,
-//                                                      1, ser);
-
-//    local_mapper_maker->setTrajectoryMaxTranslation(tbb);
-//    local_mapper_maker->setTrajectoryMaxOrientation(obb);
-//    local_mapper_maker->setClippingDistance(clipping_distance);
 
     SensorMessageSorter sorter;
     sorter.setTimeWindow(0.);
