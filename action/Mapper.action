@@ -1,0 +1,8 @@
+#goal definition
+string trigger
+---
+#result definition
+string result
+---
+#feedback
+string feed
