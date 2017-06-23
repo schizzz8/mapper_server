@@ -1,45 +1,54 @@
 #include <ros/ros.h>
+#include <sensor_msgs/Joy.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/terminal_state.h>
 #include "mapper_server/MapperAction.h"
 #include <boost/thread.hpp>
 
-void spinThread() {
-  ros::spin();
-}
+
+class MapperClient {
+public:
+    MapperClient():_start(1),_stop(2),_ac("mapper_server") {
+
+        nh_.param("button_start", _start, _start);
+        nh_.param("button_stop", _stop, _stop);
+
+        _joy_sub = nh_.subscribe<sensor_msgs::Joy>("joy", 10, &MapperClient::joyCallback, this);
+
+        ROS_INFO("Waiting for action server to start.");
+        _ac.waitForServer();
+        ROS_INFO("Action server started!");
+    }
+
+private:
+    void joyCallback(const sensor_msgs::Joy::ConstPtr& joy){
+
+        if(joy->buttons[_start] == 1){
+            mapper_server::MapperGoal goal;
+            goal.trigger = "go";
+            _ac.sendGoal(goal);
+            ROS_INFO("Sending goal.");
+        }
+
+        if(joy->buttons[_stop]){
+            _ac.cancelGoal();
+            ROS_INFO("Canceling goal.");
+        }
+    }
+
+    ros::NodeHandle nh_;
+    actionlib::SimpleActionClient<mapper_server::MapperAction> _ac;
+    int _start, _stop;
+    ros::Subscriber _joy_sub;
+
+};
 
 int main (int argc, char **argv) {
-  ros::init(argc, argv, "mapper_client");
+    ros::init(argc, argv, "mapper_client");
 
-  // create the action client
-  actionlib::SimpleActionClient<mapper_server::MapperAction> ac("mapper_server");
-  boost::thread spin_thread(&spinThread);
+    MapperClient client;
 
-  ROS_INFO("Waiting for action server to start.");
-  ac.waitForServer();
+    ros::spin();
 
-  ROS_INFO("Action server started, sending goal.");
-  // send a goal to the action
-  mapper_server::MapperGoal goal;
-  goal.trigger = "go";
-  ac.sendGoal(goal);
-
-  //wait for the action to return
-  bool finished_before_timeout = ac.waitForResult(ros::Duration(5.0));
-
-  if (finished_before_timeout){
-    actionlib::SimpleClientGoalState state = ac.getState();
-    ROS_INFO("Action finished: %s",state.toString().c_str());
-  }  else {
-      ac.cancelGoal();
-    ROS_INFO("Action did not finish before the time out.");
-  }
-
-  // shutdown the node and join the thread back before exiting
-  ros::shutdown();
-  spin_thread.join();
-
-  //exit
-  return 0;
+    return 0;
 }
-

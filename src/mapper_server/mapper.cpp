@@ -47,8 +47,9 @@ Mapper::Trigger::~Trigger() {
     }
 }
 
-Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_nh, name, false){
+Mapper::Mapper (string name, SurfaceExtractor *extractor, srrg_boss::Serializer *ser, BaseProjector* p):_as(_nh, name, false){
 
+    _action_name = "mapping";
     _as.registerGoalCallback(boost::bind(&Mapper::goalCB, this));
     _as.registerPreemptCallback(boost::bind(&Mapper::preemptCB,this));
     _as.start();
@@ -62,6 +63,12 @@ Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_
     _tail_time = 0;
 
     _serializer = ser;
+    _extractor = extractor;
+
+    _distance_threshold = 20;
+    _resolution = 0.025;
+    _connectivity_threshold = 0.01;
+
     _trajectory_min_translation = 0.05;
     _trajectory_min_orientation = 0.1;
     _local_maps = 0;
@@ -114,39 +121,51 @@ void Mapper::preemptCB(){
     _as.setPreempted();
 
 
-    LocalMap* lmap = 0;
+    LocalMapWithTraversability* lmap = 0;
     lmap  = makeLocalMap();
+    _extractor->compute(&_reference);
+    lmap->setResolution(_extractor->resolution());
+    lmap->setLower(_extractor->lower());
+    lmap->setUpper(_extractor->upper());
+    lmap->setTraversabilityMap(new TraversabilityMap (_extractor->classified(),
+                                                      _extractor->indices(),
+                                                      _extractor->elevations()));
+
     if (_serializer) {
         saveCameras(_cameras);
         saveLocalMap(*lmap);
     }
 
-    if (_last_local_map) {
-        Eigen::Isometry3f dt = _last_local_map->transform().inverse()*lmap->transform();
-        Matrix6f info = Matrix6f::Identity();
-        info *=1e-2;
+    cerr << "Local maps: " << _local_maps->size() << endl;
 
-        std::tr1::shared_ptr<BinaryNodeRelation>
-                rel (new BinaryNodeRelation(_last_local_map.get(), lmap, dt, info) );
-        if (_serializer)
-            _serializer->writeObject(*rel);
 
-        _last_relation = rel;
-        if (_relations) {
-            _relations->insert(rel);
-            if (_local_maps_relations) {
-                _local_maps_relations->insert(rel);
-            }
+    if(! _local_maps->size()){
+        cerr << "Checking connectivity!" << endl;
+        for(MapNodeList::iterator it = _local_maps->begin(); it != _local_maps->end(); it++){
+            LocalMapWithTraversability* lmap2 = dynamic_cast<LocalMapWithTraversability*> (it->get());
+            if(!same(lmap,lmap2) && closeEnough(lmap,lmap2) && !alreadyConnected(lmap,lmap2))
+                if(addEdge(lmap,lmap2)) {
+                    BinaryNodeRelation* rel = new BinaryNodeRelation(lmap,lmap2,lmap->transform().inverse()*lmap2->transform());
+                    _local_maps_relations->insert(std::tr1::shared_ptr<BinaryNodeRelation>(rel));
+                    if (_serializer)
+                        _serializer->writeObject(*rel);
+                }
         }
+    } else {
+        cerr << "Empty local maps list!" << endl;
     }
 
-    std::tr1::shared_ptr<LocalMap> current_map_ptr(lmap);
+
+    cerr << "ok" << endl;
+
+    std::tr1::shared_ptr<LocalMapWithTraversability> current_map_ptr(lmap);
 
     if (_local_maps) {
         _local_maps->push_back(current_map_ptr);
     }
     _previous_local_map = _last_local_map;
     _last_local_map = current_map_ptr;
+
     _nodes->clear();
     _relations->clear();
 
@@ -333,7 +352,7 @@ BinaryNodeRelation* Mapper::makeNodesRelation(MapNode *new_node, MapNode *previo
     return rel;
 }
 
-LocalMap* Mapper::makeLocalMap(){
+LocalMapWithTraversability *Mapper::makeLocalMap(){
     if (! _nodes)
         return 0;
     if (! _reference_good || ! _reference.size())
@@ -341,25 +360,25 @@ LocalMap* Mapper::makeLocalMap(){
 
     Eigen::Isometry3f origin = _nodes->middlePose();
     Eigen::Isometry3f invT = origin.inverse();
-    LocalMap * local_map = new LocalMap(origin);
-    local_map->nodes()=*_nodes;
-    local_map->relations()=*_relations;
-    for (MapNodeList::iterator it = _nodes->begin();
-         it!= _nodes->end(); it++) {
-        MapNode* node = it->get();
-        node->parents().insert(local_map);
-        node->setTransform(invT*node->transform());
-    }
-    for (BinaryNodeRelationSet::iterator it= _relations->begin(); it!=_relations->end(); it++) {
-        BinaryNodeRelation* rel = it->get();
-        rel->setParent(local_map);
-    }
+    LocalMapWithTraversability * local_map = new LocalMapWithTraversability(origin);
+    //    local_map->nodes()=*_nodes;
+    //    local_map->relations()=*_relations;
+    //    for (MapNodeList::iterator it = _nodes->begin();
+    //         it!= _nodes->end(); it++) {
+    //        MapNode* node = it->get();
+    //        node->parents().insert(local_map);
+    //        node->setTransform(invT*node->transform());
+    //    }
+    //    for (BinaryNodeRelationSet::iterator it= _relations->begin(); it!=_relations->end(); it++) {
+    //        BinaryNodeRelation* rel = it->get();
+    //        rel->setParent(local_map);
+    //    }
     local_map->setCloud(new Cloud(_reference));
     local_map->cloud()->transformInPlace(invT*_global_transform);
     return local_map;
 }
 
-void Mapper::saveLocalMap(LocalMap &lmap){
+void Mapper::saveLocalMap(LocalMapWithTraversability &lmap){
     for (MapNodeList::iterator tt = lmap.nodes().begin();
          tt!=lmap.nodes().end(); tt++){
         MapNode* n = tt->get();
@@ -381,6 +400,32 @@ void Mapper::saveCameras(CameraInfoManager &manager){
         BaseCameraInfo* cam = manager.cameras()[i];
         _serializer->writeObject(*cam);
     }
+}
+
+bool Mapper::addEdge(LocalMapWithTraversability* lmap1, LocalMapWithTraversability* lmap2){
+    Eigen::Vector3f origin = Eigen::Vector3f::Zero();
+    Eigen::Vector3i dimensions = Eigen::Vector3i::Zero();
+
+    Cloud* cloud = new Cloud;
+    Cloud transformed_cloud;
+    lmap1->cloud()->transform(transformed_cloud,lmap1->transform());
+    cloud->add(transformed_cloud);
+    int size1 = cloud->size();
+    transformed_cloud.clear();
+    lmap2->cloud()->transform(transformed_cloud,lmap2->transform());
+    cloud->add(transformed_cloud);
+
+    Eigen::Vector3f lower,higher;
+    cloud->computeBoundingBox(lower,higher);
+    origin = lower - Eigen::Vector3f(5*_resolution,5*_resolution,5*_resolution);
+    dimensions = (((higher + Eigen::Vector3f(5*_resolution,5*_resolution,5*_resolution))-lower)/_resolution).cast<int> ();
+    SparseGrid grid (_resolution,origin,dimensions,size1);
+    grid.insertCloud(*cloud);
+    grid.extractCloud();
+    grid.extractSurface();
+
+    return grid.checkConnectivity(_connectivity_threshold);
+
 }
 
 }

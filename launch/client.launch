@@ -1,0 +1,13 @@
+<launch>
+
+ <!-- joy node -->
+  <node respawn="true" pkg="joy" type="joy_node" name="client_joy" >
+    <param name="dev" type="string" value="/dev/input/js0" />
+    <param name="deadzone" value="0.12" />
+  </node>
+
+ <!-- Axes -->
+  <param name="button_start" value="1" type="int"/>
+  <param name="button_stop" value="2" type="int"/>
+  <node pkg="mapper_server" type="mapper_client_node" name="mapper_client"/>
+</launch>

@@ -2,10 +2,13 @@
 
 #include <srrg_boss/serializer.h>
 
+#include "surface_extractor.h"
+#include "sparse_grid.h"
+
 #include <srrg_nicp/depth_utils.h>
 #include <srrg_core_map/base_camera_info.h>
 #include <srrg_core_map/image_map_node.h>
-#include <srrg_core_map/local_map.h>
+#include <srrg_core_map/local_map_with_traversability.h>
 #include <srrg_core_map/binary_node_relation.h>
 #include <srrg_nicp/camera_info_manager.h>
 #include <srrg_nicp/pinhole_projector.h>
@@ -56,7 +59,7 @@ public:
     //! ctor if a = 0, it creates its own instance of Projective Aligner with a Pinhole projector;
     //! if you pass your aligner it will use that one
     //! this way you can construct a tracker based on different alignment policies
-    Mapper(std::string name, srrg_boss::Serializer* ser=0, srrg_nicp::BaseProjector*p=0);
+    Mapper(std::string name, SurfaceExtractor* extractor=0, srrg_boss::Serializer* ser=0, srrg_nicp::BaseProjector*p=0);
 
     //! processes a frame, froma raw depth image, updates the transform and adds the new colud to the local map
     //! @param depth : uint16_t depth image
@@ -79,6 +82,9 @@ public:
 
     inline srrg_boss::Serializer* serializer() const {return _serializer;}
     inline void setSerializer(srrg_boss::Serializer* ser) {_serializer = ser;}
+
+    inline SurfaceExtractor* extractor() const {return _extractor;}
+    inline void setExtractor(SurfaceExtractor* extractor){_extractor = extractor;}
 
     //! access to the internal projector object
     srrg_nicp::BaseProjector& projector() { return *_projector;}
@@ -187,15 +193,21 @@ protected:
     bool _merging_enabled;
     float _merging_distance;
 
+    SurfaceExtractor* _extractor;
+
     srrg_boss::Serializer* _serializer;
     srrg_core_map::MapNodeList* _nodes;
     srrg_core_map::BinaryNodeRelationSet* _relations;
     float _trajectory_min_translation;
     float _trajectory_min_orientation;
-    std::tr1::shared_ptr<srrg_core_map::LocalMap> _last_local_map, _previous_local_map;
+    std::tr1::shared_ptr<srrg_core_map::LocalMapWithTraversability> _last_local_map, _previous_local_map;
     std::tr1::shared_ptr<srrg_core_map::BinaryNodeRelation> _last_relation;
     srrg_core_map::MapNodeList* _local_maps;
     srrg_core_map::BinaryNodeRelationSet* _local_maps_relations;
+
+    float _resolution;
+    float _distance_threshold;
+    float _connectivity_threshold;
 
     double _start_time;
     double _current_time;
@@ -233,10 +245,28 @@ protected:
     srrg_core_map::MapNode* makeNode();
     srrg_core_map::BinaryNodeRelation* makeNodesRelation(srrg_core_map::MapNode* new_node,
                                                          srrg_core_map::MapNode* previous_node);
-    srrg_core_map::LocalMap* makeLocalMap();
-    void saveLocalMap(srrg_core_map::LocalMap& lmap);
+    srrg_core_map::LocalMapWithTraversability* makeLocalMap();
+    void saveLocalMap(srrg_core_map::LocalMapWithTraversability& lmap);
     void saveCameras(srrg_nicp::CameraInfoManager& manager);
 
+    inline bool same(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
+        return (lmap1 == lmap2) ? true : false;
+    }
+
+    inline bool closeEnough(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
+        return ((lmap1->transform().translation() - lmap2->transform().translation()).norm() <= _distance_threshold) ? true : false;
+    }
+
+    inline bool alreadyConnected(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
+        for(srrg_core_map::BinaryNodeRelationSet::iterator kt = _local_maps_relations->begin(); kt != _local_maps_relations->end(); kt++)
+            if((*kt)->from() == lmap1 && (*kt)->to() == lmap2 ||
+                    (*kt)->from() == lmap2 && (*kt)->to() == lmap1) {
+                return true;
+            }
+        return false;
+    }
+
+    bool addEdge(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2);
 };
 
 }

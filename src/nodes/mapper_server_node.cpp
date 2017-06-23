@@ -16,8 +16,8 @@
 #include <srrg_nicp/projective_aligner.h>
 #include "mapper_server/mapper.h"
 #include "mapper_server/pointcloud_publisher_trigger.h"
-#include "mapper_server/local_mapper_trigger.h"
 #include "mapper_server/call_mapper_trigger.h"
+#include "mapper_server/surface_extractor.h"
 
 #include <image_transport/image_transport.h>
 
@@ -144,6 +144,9 @@ int main(int argc, char **argv) {
         ser->setBinaryPath(output_filename + ".d/<classname>.<nameAttribute>.<id>.<ext>");
     }
 
+    SurfaceExtractor* extractor = new SurfaceExtractor();
+    extractor->setResolution(0.025);
+
     ros::init(argc, argv, "mapper_server");
     if (base_link_frame_id.length()>0){
         cerr << "making listener" << endl;
@@ -153,7 +156,7 @@ int main(int argc, char **argv) {
     image_transport::ImageTransport itr(nh);
 
     cerr << "constructing mapper ... ";
-    mapper = new Mapper(ros::this_node::getName(),ser);
+    mapper = new Mapper(ros::this_node::getName(),extractor,ser);
     if (! mapper) {
         cerr << "unknown mapper type, aborting" << endl;
         return 0;
