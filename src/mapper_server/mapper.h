@@ -2,18 +2,20 @@
 
 #include <srrg_boss/serializer.h>
 
-#include "surface_extractor.h"
 #include "sparse_grid.h"
 
-#include <srrg_nicp/depth_utils.h>
-#include <srrg_core_map/base_camera_info.h>
-#include <srrg_core_map/image_map_node.h>
-#include <srrg_core_map/local_map_with_traversability.h>
-#include <srrg_core_map/binary_node_relation.h>
-#include <srrg_nicp/camera_info_manager.h>
+#include <srrg_image_utils/depth_utils.h>
+#include <srrg_types/base_camera_info.h>
+#include "srrg_core_map_2/map_node_list.h"
+#include "srrg_core_map_2/local_map.h"
+#include "srrg_core_map_2/map_node_relation.h"
+#include <srrg_types/camera_info_manager.h>
 #include <srrg_nicp/pinhole_projector.h>
 
 #include <fstream>
+
+//#include "srrg_types/cloud_3d.h"
+//#include "srrg_types/traversability_map.h"
 
 #include <ros/ros.h>
 #include "std_msgs/String.h"
@@ -59,7 +61,7 @@ public:
     //! ctor if a = 0, it creates its own instance of Projective Aligner with a Pinhole projector;
     //! if you pass your aligner it will use that one
     //! this way you can construct a tracker based on different alignment policies
-    Mapper(std::string name, SurfaceExtractor* extractor=0, srrg_boss::Serializer* ser=0, srrg_nicp::BaseProjector*p=0);
+    Mapper(std::string name, srrg_boss::Serializer* ser=0, srrg_nicp::BaseProjector*p=0);
 
     //! processes a frame, froma raw depth image, updates the transform and adds the new colud to the local map
     //! @param depth : uint16_t depth image
@@ -82,9 +84,6 @@ public:
 
     inline srrg_boss::Serializer* serializer() const {return _serializer;}
     inline void setSerializer(srrg_boss::Serializer* ser) {_serializer = ser;}
-
-    inline SurfaceExtractor* extractor() const {return _extractor;}
-    inline void setExtractor(SurfaceExtractor* extractor){_extractor = extractor;}
 
     //! access to the internal projector object
     srrg_nicp::BaseProjector& projector() { return *_projector;}
@@ -111,14 +110,14 @@ public:
     //! a camera is created the first time an image message with an unseen topic is
     //! passed to processFrame()
     //! this object will contain a list of all cameras
-    inline srrg_nicp::CameraInfoManager& cameras() { return _cameras; }
+    inline srrg_core::CameraInfoManager& cameras() { return _cameras; }
 
     //! access to the current cloud (the last one passed to the tracker)
-    inline srrg_core::Cloud& currentModel() { return _current;}
+    inline srrg_core::Cloud3D& currentModel() { return _current;}
     //! access to the reference cloud (the local map cloud)
-    inline srrg_core::Cloud& referenceModel() { return _reference;}
+    inline srrg_core::Cloud3D& referenceModel() { return _reference;}
     //! sets the reference model
-    inline void setReferenceModel(const srrg_core::Cloud& reference_model) { _reference = reference_model; }
+    inline void setReferenceModel(const srrg_core::Cloud3D& reference_model) { _reference = reference_model; }
 
     //! controls the integration of a new cloud
     //! if false, the robot pose is only tracked but not augmented
@@ -140,7 +139,7 @@ public:
     inline int lastSeq() const {return _last_seq;}
     inline srrg_core::RawDepthImage& lastRawDepth() {return _last_raw_depth;}
     inline float lastDepthScale() const {return _last_depth_scale;}
-    inline srrg_core_map::BaseCameraInfo* lastCamera() {return _last_camera;}
+    inline srrg_core::BaseCameraInfo* lastCamera() {return _last_camera;}
     inline const std::string& lastTopic() const {return _last_topic;}
     inline const Eigen::Isometry3f& lastInitialGuess() const {return _last_initial_guess;}
     inline const Eigen::Isometry3f& lastCameraOffset() const {return _last_camera_offset;}
@@ -152,9 +151,9 @@ public:
 
     inline bool referenceGood() const {return _reference_good;}
 
-    srrg_core_map::MapNodeList* nodes() {return _nodes;}
-    srrg_core_map::BinaryNodeRelationSet* relations() { return _relations;}
-    void setNodes(srrg_core_map::MapNodeList* nodes_) {_nodes = nodes_;}
+    srrg_core_map_2::Pose3DMapNodeList* nodes() {return _nodes;}
+    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* relations() { return _relations;}
+    void setNodes(srrg_core_map_2::Pose3DMapNodeList* nodes_) {_nodes = nodes_;}
 
     // min translation between two trajectory nodes
     inline float trajectoryMinTranslation()  const { return _trajectory_min_translation; }
@@ -179,12 +178,12 @@ protected:
     typedef std::map<int, Trigger*> PriorityTriggerMap;
     typedef std::map<TriggerEvent, PriorityTriggerMap> EventTriggerMap;
 
-    srrg_nicp::CameraInfoManager _cameras;
+    srrg_core::CameraInfoManager _cameras;
     srrg_nicp::BaseProjector* _projector;
 
-    srrg_core::Cloud _reference;
-    srrg_core::Cloud _current;
-    srrg_core::Cloud _temp_current;
+    srrg_core::Cloud3D _reference;
+    srrg_core::Cloud3D _current;
+    srrg_core::Cloud3D _temp_current;
 
     float _merging_gain;
     Eigen::Isometry3f _global_transform;
@@ -193,17 +192,15 @@ protected:
     bool _merging_enabled;
     float _merging_distance;
 
-    SurfaceExtractor* _extractor;
-
     srrg_boss::Serializer* _serializer;
-    srrg_core_map::MapNodeList* _nodes;
-    srrg_core_map::BinaryNodeRelationSet* _relations;
+    srrg_core_map_2::Pose3DMapNodeList* _nodes;
+    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _relations;
     float _trajectory_min_translation;
     float _trajectory_min_orientation;
-    std::tr1::shared_ptr<srrg_core_map::LocalMapWithTraversability> _last_local_map, _previous_local_map;
-    std::tr1::shared_ptr<srrg_core_map::BinaryNodeRelation> _last_relation;
-    srrg_core_map::MapNodeList* _local_maps;
-    srrg_core_map::BinaryNodeRelationSet* _local_maps_relations;
+    std::tr1::shared_ptr<srrg_core_map_2::LocalMap3D> _last_local_map, _previous_local_map;
+    std::tr1::shared_ptr<srrg_core_map_2::Pose3DPose3DMapNodeRelation> _last_relation;
+    srrg_core_map_2::Pose3DMapNodeList* _local_maps;
+    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _local_maps_relations;
 
     float _resolution;
     float _distance_threshold;
@@ -223,7 +220,7 @@ protected:
 
     int _last_seq;
     float _last_depth_scale;
-    srrg_core_map::BaseCameraInfo* _last_camera;
+    srrg_core::BaseCameraInfo* _last_camera;
     Eigen::Isometry3f _last_odom;
     double _last_timestamp;
 
@@ -242,23 +239,23 @@ protected:
     void callTriggers(TriggerEvent event);
     EventTriggerMap _triggers;
 
-    srrg_core_map::MapNode* makeNode();
-    srrg_core_map::BinaryNodeRelation* makeNodesRelation(srrg_core_map::MapNode* new_node,
-                                                         srrg_core_map::MapNode* previous_node);
-    srrg_core_map::LocalMapWithTraversability* makeLocalMap();
-    void saveLocalMap(srrg_core_map::LocalMapWithTraversability& lmap);
-    void saveCameras(srrg_nicp::CameraInfoManager& manager);
+    srrg_core_map_2::Pose3DMapNode* makeNode();
+    srrg_core_map_2::Pose3DPose3DMapNodeRelation* makeNodesRelation(srrg_core_map_2::Pose3DMapNode* new_node,
+                                                         srrg_core_map_2::Pose3DMapNode* previous_node);
+    srrg_core_map_2::LocalMap3D* makeLocalMap();
+    void saveLocalMap(srrg_core_map_2::LocalMap3D& lmap);
+    void saveCameras(srrg_core::CameraInfoManager& manager);
 
-    inline bool same(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
+    inline bool same(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
         return (lmap1 == lmap2) ? true : false;
     }
 
-    inline bool closeEnough(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
-        return ((lmap1->transform().translation() - lmap2->transform().translation()).norm() <= _distance_threshold) ? true : false;
+    inline bool closeEnough(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
+        return ((lmap1->estimate().translation() - lmap2->estimate().translation()).norm() <= _distance_threshold) ? true : false;
     }
 
-    inline bool alreadyConnected(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2){
-        for(srrg_core_map::BinaryNodeRelationSet::iterator kt = _local_maps_relations->begin(); kt != _local_maps_relations->end(); kt++)
+    inline bool alreadyConnected(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
+        for(srrg_core_map_2::Pose3DPose3DMapNodeRelationSet::iterator kt = _local_maps_relations->begin(); kt != _local_maps_relations->end(); kt++)
             if((*kt)->from() == lmap1 && (*kt)->to() == lmap2 ||
                     (*kt)->from() == lmap2 && (*kt)->to() == lmap1) {
                 return true;
@@ -266,7 +263,7 @@ protected:
         return false;
     }
 
-    bool addEdge(srrg_core_map::LocalMapWithTraversability* lmap1, srrg_core_map::LocalMapWithTraversability* lmap2);
+    bool addEdge(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2);
 };
 
 }

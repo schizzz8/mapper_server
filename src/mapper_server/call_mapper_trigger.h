@@ -1,8 +1,8 @@
 #pragma once
 
-#include <srrg_txt_io/sensor_message_sorter.h>
-#include <srrg_txt_io/message_timestamp_synchronizer.h>
-#include <srrg_txt_io/pinhole_image_message.h>
+#include <srrg_messages/sensor_message_sorter.h>
+#include <srrg_messages/message_timestamp_synchronizer.h>
+#include <srrg_messages/pinhole_image_message.h>
 
 #include "mapper.h"
 

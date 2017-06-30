@@ -15,7 +15,7 @@ SurfaceExtractor::SurfaceExtractor(float resolution_) {
 }
 
 
-void SurfaceExtractor::compute(Cloud* cloud_, const Eigen::Isometry3f& iso) {
+void SurfaceExtractor::compute(Cloud3D *cloud_, const Eigen::Isometry3f& iso) {
     _indices.release();
     _elevations.release();
     _transformed_cloud.clear();
@@ -48,7 +48,7 @@ void SurfaceExtractor::compute(Cloud* cloud_, const Eigen::Isometry3f& iso) {
 
     // compute the elevation of the surface
     for (size_t i=0; i<_transformed_cloud.size(); i++){
-        const RichPoint& p = _transformed_cloud[i];
+        const RichPoint3D& p = _transformed_cloud[i];
         float z = p.point().z();
         Eigen::Vector3f projected_point = (p.point() - _bottom)*ires;
 
@@ -71,7 +71,7 @@ void SurfaceExtractor::compute(Cloud* cloud_, const Eigen::Isometry3f& iso) {
     
     // mark the cells that are obstacles
     for (size_t i=0; i<_transformed_cloud.size(); i++){
-        const RichPoint& p = _transformed_cloud[i];
+        const RichPoint3D& p = _transformed_cloud[i];
         Eigen::Vector3f projected_point = (p.point() - _bottom)*ires;
         float z = p.point().z();
 

@@ -16,7 +16,7 @@ namespace mapper_server {
 using namespace srrg_core;
 using namespace std;
 
-void SparseGrid::insertCloud(const Cloud& cloud){
+void SparseGrid::insertCloud(const Cloud3D &cloud){
     for(size_t ii=0; ii < cloud.size(); ii++) {
 
         Eigen::Vector3i idx = toGrid(cloud.at(ii).point());
@@ -38,7 +38,7 @@ void SparseGrid::insertCloud(const Cloud& cloud){
     }
 }
 
-Cloud SparseGrid::extractCloud(){
+Cloud3D SparseGrid::extractCloud(){
     for(Vector3iCellPtrMap::iterator it = begin();
         it != end();
         it++){
@@ -54,7 +54,7 @@ Cloud SparseGrid::extractCloud(){
         }
 
         centroid /= points.size();
-        _cloud.push_back(RichPoint(centroid,Eigen::Vector3f::Zero(),0,Eigen::Vector3f (1,0,0)));
+        _cloud.push_back(RichPoint3D(centroid,Eigen::Vector3f::Zero(),0,Eigen::Vector3f (1,0,0)));
     }
     return _cloud;
 }
@@ -86,7 +86,7 @@ UnsignedCharImage SparseGrid::extractSurface(){
     float robot_height=0.5;
 
     for (int i = 0; i < _cloud.size(); i++){
-        const RichPoint& point = _cloud.at(i);
+        const RichPoint3D& point = _cloud.at(i);
         float z = point.point().z();
         Eigen::Vector3f projected_point = (point.point() - bottom)*_inverse_resolution;
         int row = projected_point.y();
@@ -104,7 +104,7 @@ UnsignedCharImage SparseGrid::extractSurface(){
     }
 
     for (int i = 0; i < _cloud.size(); i++){
-        const RichPoint& point = _cloud.at(i);
+        const RichPoint3D& point = _cloud.at(i);
         float z = point.point().z();
         Eigen::Vector3f projected_point = (point.point() - bottom)*_inverse_resolution;
         int row = projected_point.y();
@@ -161,7 +161,7 @@ UnsignedCharImage SparseGrid::extractSurface(){
                 continue;
             unsigned char & cell=_classified.at<unsigned char>(r,c);
             if(cell==0){
-                const RichPoint& point = _cloud.at(idx);
+                const RichPoint3D& point = _cloud.at(idx);
                 Eigen::Vector3i idx = toGrid(point.point());
                 at(idx)->setGround(true);
             }

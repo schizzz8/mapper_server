@@ -1,5 +1,5 @@
 #include <srrg_system_utils/system_utils.h>
-#include <srrg_core_map/pinhole_camera_info.h>
+#include <srrg_types/pinhole_camera_info.h>
 #include "mapper.h"
 #include <tr1/memory>
 #include <typeinfo>
@@ -12,9 +12,8 @@
 namespace mapper_server {
 
 using namespace std;
-using namespace Eigen;
 using namespace srrg_core;
-using namespace srrg_core_map;
+using namespace srrg_core_map_2;
 using namespace srrg_nicp;
 
 Mapper::Trigger::Trigger(Mapper *mapper, int e, int p) {
@@ -47,7 +46,7 @@ Mapper::Trigger::~Trigger() {
     }
 }
 
-Mapper::Mapper (string name, SurfaceExtractor *extractor, srrg_boss::Serializer *ser, BaseProjector* p):_as(_nh, name, false){
+Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_nh, name, false){
 
     _action_name = "mapping";
     _as.registerGoalCallback(boost::bind(&Mapper::goalCB, this));
@@ -63,7 +62,6 @@ Mapper::Mapper (string name, SurfaceExtractor *extractor, srrg_boss::Serializer 
     _tail_time = 0;
 
     _serializer = ser;
-    _extractor = extractor;
 
     _distance_threshold = 20;
     _resolution = 0.025;
@@ -73,8 +71,8 @@ Mapper::Mapper (string name, SurfaceExtractor *extractor, srrg_boss::Serializer 
     _trajectory_min_orientation = 0.1;
     _local_maps = 0;
     _local_maps_relations = 0;
-    _nodes = new MapNodeList;
-    _relations = new BinaryNodeRelationSet;
+    _nodes = new Pose3DMapNodeList;
+    _relations = new Pose3DPose3DMapNodeRelationSet;
 
     _reference;
     _current;
@@ -121,15 +119,8 @@ void Mapper::preemptCB(){
     _as.setPreempted();
 
 
-    LocalMapWithTraversability* lmap = 0;
+    LocalMap3D* lmap = 0;
     lmap  = makeLocalMap();
-    _extractor->compute(&_reference);
-    lmap->setResolution(_extractor->resolution());
-    lmap->setLower(_extractor->lower());
-    lmap->setUpper(_extractor->upper());
-    lmap->setTraversabilityMap(new TraversabilityMap (_extractor->classified(),
-                                                      _extractor->indices(),
-                                                      _extractor->elevations()));
 
     if (_serializer) {
         saveCameras(_cameras);
@@ -138,15 +129,24 @@ void Mapper::preemptCB(){
 
     cerr << "Local maps: " << _local_maps->size() << endl;
 
+    std::tr1::shared_ptr<LocalMap3D> current_map_ptr(lmap);
 
-    if(! _local_maps->size()){
+    if (_local_maps) {
+        _local_maps->push_back(current_map_ptr);
+    }
+    _previous_local_map = _last_local_map;
+    _last_local_map = current_map_ptr;
+
+    if(! _local_maps->empty()){
         cerr << "Checking connectivity!" << endl;
-        for(MapNodeList::iterator it = _local_maps->begin(); it != _local_maps->end(); it++){
-            LocalMapWithTraversability* lmap2 = dynamic_cast<LocalMapWithTraversability*> (it->get());
+        for(Pose3DMapNodeList::iterator it = _local_maps->begin(); it != _local_maps->end(); it++){
+            LocalMap3D* lmap2 = dynamic_cast<LocalMap3D*> (it->get());
             if(!same(lmap,lmap2) && closeEnough(lmap,lmap2) && !alreadyConnected(lmap,lmap2))
                 if(addEdge(lmap,lmap2)) {
-                    BinaryNodeRelation* rel = new BinaryNodeRelation(lmap,lmap2,lmap->transform().inverse()*lmap2->transform());
-                    _local_maps_relations->insert(std::tr1::shared_ptr<BinaryNodeRelation>(rel));
+                    Pose3DPose3DMapNodeRelation* rel = new Pose3DPose3DMapNodeRelation(lmap->estimate().inverse()*lmap2->estimate());
+                    rel->setFrom(lmap);
+                    rel->setTo(lmap2);
+                    _local_maps_relations->insert(std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>(rel));
                     if (_serializer)
                         _serializer->writeObject(*rel);
                 }
@@ -154,17 +154,6 @@ void Mapper::preemptCB(){
     } else {
         cerr << "Empty local maps list!" << endl;
     }
-
-
-    cerr << "ok" << endl;
-
-    std::tr1::shared_ptr<LocalMapWithTraversability> current_map_ptr(lmap);
-
-    if (_local_maps) {
-        _local_maps->push_back(current_map_ptr);
-    }
-    _previous_local_map = _last_local_map;
-    _last_local_map = current_map_ptr;
 
     _nodes->clear();
     _relations->clear();
@@ -235,13 +224,13 @@ void Mapper::processFrame(const RawDepthImage& depth,
     if (! make_new_node)
         return;
 
-    MapNode* new_node=makeNode();
-    MapNode* previous_node =  (_nodes && _nodes->size()) ? _nodes->rbegin()->get() : 0;
+    Pose3DMapNode* new_node=makeNode();
+    Pose3DMapNode* previous_node =  (_nodes && _nodes->size()) ? _nodes->rbegin()->get() : 0;
     _nodes->addElement(new_node);
 
-    BinaryNodeRelation* rel=makeNodesRelation(new_node, previous_node);
+    Pose3DPose3DMapNodeRelation* rel=makeNodesRelation(new_node, previous_node);
     if (rel) {
-        _relations->insert(std::tr1::shared_ptr<BinaryNodeRelation>(rel));
+        _relations->insert(std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>(rel));
     }
 
     _current.clear();
@@ -332,27 +321,27 @@ void Mapper::callTriggers(TriggerEvent event){
     }
 }
 
-MapNode* Mapper::makeNode(){
-    MapNode* new_node = 0;
-    MapNode* previous_node = 0;
+Pose3DMapNode *Mapper::makeNode(){
+    Pose3DMapNode* new_node = 0;
+    Pose3DMapNode* previous_node = 0;
     if (_nodes->size())
         previous_node = _nodes->rbegin()->get();
 
-    new_node = new ImageMapNode(_global_transform, _last_camera, _last_topic, _last_seq);
+    new_node = new Pose3DMapNode(_global_transform);
     return new_node;
 }
 
-BinaryNodeRelation* Mapper::makeNodesRelation(MapNode *new_node, MapNode *previous_node){
+Pose3DPose3DMapNodeRelation *Mapper::makeNodesRelation(Pose3DMapNode *new_node, Pose3DMapNode *previous_node){
     if (! _relations || ! previous_node)
         return 0;
-    BinaryNodeRelation* rel = new BinaryNodeRelation;
+    Pose3DPose3DMapNodeRelation* rel = new Pose3DPose3DMapNodeRelation(previous_node->estimate().inverse()*new_node->estimate());
     rel->setFrom(previous_node);
     rel->setTo(new_node);
-    rel->setTransform(previous_node->transform().inverse()*new_node->transform());
+    
     return rel;
 }
 
-LocalMapWithTraversability *Mapper::makeLocalMap(){
+LocalMap3D *Mapper::makeLocalMap(){
     if (! _nodes)
         return 0;
     if (! _reference_good || ! _reference.size())
@@ -360,7 +349,7 @@ LocalMapWithTraversability *Mapper::makeLocalMap(){
 
     Eigen::Isometry3f origin = _nodes->middlePose();
     Eigen::Isometry3f invT = origin.inverse();
-    LocalMapWithTraversability * local_map = new LocalMapWithTraversability(origin);
+    LocalMap3D* local_map = new LocalMap3D(origin);
     //    local_map->nodes()=*_nodes;
     //    local_map->relations()=*_relations;
     //    for (MapNodeList::iterator it = _nodes->begin();
@@ -373,24 +362,30 @@ LocalMapWithTraversability *Mapper::makeLocalMap(){
     //        BinaryNodeRelation* rel = it->get();
     //        rel->setParent(local_map);
     //    }
-    local_map->setCloud(new Cloud(_reference));
+    local_map->setCloud(new Cloud3D(_reference));
     local_map->cloud()->transformInPlace(invT*_global_transform);
+
+    TraversabilityMap* traversability = new TraversabilityMap;
+    traversability->setResolution(_resolution);
+    traversability->compute(local_map->cloud());
+
+    local_map->setTraversabilityMap(traversability);
+
     return local_map;
 }
 
-void Mapper::saveLocalMap(LocalMapWithTraversability &lmap){
-    for (MapNodeList::iterator tt = lmap.nodes().begin();
+void Mapper::saveLocalMap(LocalMap3D &lmap){
+    for (MapNodePtrSet::iterator tt = lmap.nodes().begin();
          tt!=lmap.nodes().end(); tt++){
-        MapNode* n = tt->get();
+        Pose3DMapNode* n = dynamic_cast<Pose3DMapNode*> (*tt);
         _serializer->writeObject(*n);
     }
 
-    for (BinaryNodeRelationSet::iterator it = lmap.relations().begin();
+    for (MapNodeRelationPtrSet::iterator it = lmap.relations().begin();
          it!=lmap.relations().end(); it++){
-        BinaryNodeRelation* r = it->get();
+        Pose3DPose3DMapNodeRelation* r = dynamic_cast<Pose3DPose3DMapNodeRelation*> (*it);
         _serializer->writeObject(*r);
     }
-
     // write the local map
     _serializer->writeObject(lmap);
 }
@@ -402,17 +397,17 @@ void Mapper::saveCameras(CameraInfoManager &manager){
     }
 }
 
-bool Mapper::addEdge(LocalMapWithTraversability* lmap1, LocalMapWithTraversability* lmap2){
+bool Mapper::addEdge(LocalMap3D* lmap1, LocalMap3D* lmap2){
     Eigen::Vector3f origin = Eigen::Vector3f::Zero();
     Eigen::Vector3i dimensions = Eigen::Vector3i::Zero();
 
-    Cloud* cloud = new Cloud;
-    Cloud transformed_cloud;
-    lmap1->cloud()->transform(transformed_cloud,lmap1->transform());
+    Cloud3D* cloud = new Cloud3D;
+    Cloud3D transformed_cloud;
+    lmap1->cloud()->transform(transformed_cloud,lmap1->estimate());
     cloud->add(transformed_cloud);
     int size1 = cloud->size();
     transformed_cloud.clear();
-    lmap2->cloud()->transform(transformed_cloud,lmap2->transform());
+    lmap2->cloud()->transform(transformed_cloud,lmap2->estimate());
     cloud->add(transformed_cloud);
 
     Eigen::Vector3f lower,higher;

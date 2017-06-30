@@ -9,9 +9,8 @@
 #include <queue>
 #include <map>
 #include <unordered_map>
-#include <Eigen/Core>
 
-#include <srrg_types/cloud.h>
+#include <srrg_types/cloud_3d.h>
 
 
 namespace mapper_server {
@@ -88,9 +87,9 @@ public:
         _num_cells = _dimensions.x()*_dimensions.y()*_dimensions.z();
     }
 
-    void insertCloud(const srrg_core::Cloud& cloud);
+    void insertCloud(const srrg_core::Cloud3D& cloud);
 
-    srrg_core::Cloud extractCloud();
+    srrg_core::Cloud3D extractCloud();
 
     srrg_core::UnsignedCharImage extractSurface();
 
@@ -115,7 +114,7 @@ protected:
     Eigen::Vector3i _dimensions;
     int _num_cells;
     int _half;
-    srrg_core::Cloud _cloud;
+    srrg_core::Cloud3D _cloud;
     srrg_core::UnsignedCharImage _classified;
 
     inline const bool hasCell(const Eigen::Vector3i& idx){

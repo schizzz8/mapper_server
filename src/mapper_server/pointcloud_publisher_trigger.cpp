@@ -1,11 +1,6 @@
 #include "pointcloud_publisher_trigger.h"
-#include <srrg_core_map_ros/map_msgs_ros.h>
-#include <srrg_core_ros/StampedCloudMsg.h>
 
 namespace mapper_server {
-
-using namespace srrg_core_ros;
-using namespace srrg_core_map_ros;
 
 PointCloudPublisherTrigger::PointCloudPublisherTrigger(Mapper* mapper,
                                                        int event, int priority,

@@ -1,6 +1,5 @@
 #pragma once
-#include "srrg_types/cloud.h"
-//#include "srrg_distance_map/distance_map.h"
+#include "srrg_types/cloud_3d.h"
 
 
 namespace mapper_server {
@@ -11,7 +10,7 @@ public:
 
     SurfaceExtractor(float resolution_ = 0.05f);
 
-    void compute(srrg_core::Cloud* cloud_, const Eigen::Isometry3f& iso=Eigen::Isometry3f::Identity());
+    void compute(srrg_core::Cloud3D* cloud_, const Eigen::Isometry3f& iso=Eigen::Isometry3f::Identity());
 
     inline void setResolution(float resolution_) { _resolution = resolution_; }
     
@@ -34,7 +33,7 @@ protected:
     srrg_core::IntImage _indices;
     srrg_core::FloatImage _elevations;
     srrg_core::FloatImage _obstacles;
-    srrg_core::Cloud _transformed_cloud;
+    srrg_core::Cloud3D _transformed_cloud;
     float _resolution;
     Eigen::Vector3f _upper;
     Eigen::Vector3f _lower;

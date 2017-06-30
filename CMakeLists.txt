@@ -34,8 +34,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   srrg_core
-  srrg_core_map
-  srrg_core_map_ros
+  srrg_core_map_2
   srrg_core_ros
   srrg_nicp
   std_msgs
@@ -136,7 +135,7 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 catkin_package(
   INCLUDE_DIRS src
   LIBRARIES mapper_server_library
-  CATKIN_DEPENDS actionlib actionlib_msgs geometry_msgs message_generation roscpp rospy sensor_msgs srrg_core srrg_core_map srrg_core_map_ros srrg_core_ros srrg_nicp std_msgs tf
+  CATKIN_DEPENDS actionlib actionlib_msgs geometry_msgs roscpp rospy sensor_msgs srrg_core srrg_core_map_2 srrg_core_ros srrg_nicp std_msgs tf
   DEPENDS actionlib_msgs
 )
 
