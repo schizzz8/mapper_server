@@ -197,8 +197,6 @@ protected:
     srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _relations;
     float _trajectory_min_translation;
     float _trajectory_min_orientation;
-    std::tr1::shared_ptr<srrg_core_map_2::LocalMap3D> _last_local_map, _previous_local_map;
-    std::tr1::shared_ptr<srrg_core_map_2::Pose3DPose3DMapNodeRelation> _last_relation;
     srrg_core_map_2::Pose3DMapNodeList* _local_maps;
     srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _local_maps_relations;
 
@@ -241,25 +239,39 @@ protected:
 
     srrg_core_map_2::Pose3DMapNode* makeNode();
     srrg_core_map_2::Pose3DPose3DMapNodeRelation* makeNodesRelation(srrg_core_map_2::Pose3DMapNode* new_node,
-                                                         srrg_core_map_2::Pose3DMapNode* previous_node);
+                                                                    srrg_core_map_2::Pose3DMapNode* previous_node);
     srrg_core_map_2::LocalMap3D* makeLocalMap();
     void saveLocalMap(srrg_core_map_2::LocalMap3D& lmap);
     void saveCameras(srrg_core::CameraInfoManager& manager);
 
     inline bool same(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
+        if(lmap1==lmap2){
+            std::cerr << "Same local maps (" <<  lmap1 << " = " << lmap2 << ")" << std::endl;
+        }
         return (lmap1 == lmap2) ? true : false;
     }
 
     inline bool closeEnough(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
+        if((lmap1->estimate().translation() - lmap2->estimate().translation()).norm()>_distance_threshold){
+            std::cerr << "Local maps not close enough (" << (lmap1->estimate().translation() - lmap2->estimate().translation()).norm()
+                      << " > " << _distance_threshold << ")" << std::endl;
+        }
+
         return ((lmap1->estimate().translation() - lmap2->estimate().translation()).norm() <= _distance_threshold) ? true : false;
     }
 
     inline bool alreadyConnected(srrg_core_map_2::LocalMap3D* lmap1, srrg_core_map_2::LocalMap3D* lmap2){
-        for(srrg_core_map_2::Pose3DPose3DMapNodeRelationSet::iterator kt = _local_maps_relations->begin(); kt != _local_maps_relations->end(); kt++)
+        if(_local_maps_relations->empty())
+            return false;
+
+        for(srrg_core_map_2::Pose3DPose3DMapNodeRelationSet::iterator kt = _local_maps_relations->begin();
+            kt != _local_maps_relations->end(); kt++)
             if((*kt)->from() == lmap1 && (*kt)->to() == lmap2 ||
                     (*kt)->from() == lmap2 && (*kt)->to() == lmap1) {
+                std::cerr << "Local Maps already connected!" << std::endl;
                 return true;
             }
+
         return false;
     }
 

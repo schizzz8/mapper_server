@@ -5,6 +5,7 @@
 #include <typeinfo>
 #include <stdexcept>
 #include <srrg_nicp/nn_aligner.h>
+#include "surface_extractor.h"
 
 
 #define BIG_NUMBER_OF_POINTS 10000000
@@ -73,6 +74,8 @@ Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_
     _local_maps_relations = 0;
     _nodes = new Pose3DMapNodeList;
     _relations = new Pose3DPose3DMapNodeRelationSet;
+    _local_maps = new Pose3DMapNodeList;
+    _local_maps_relations = new Pose3DPose3DMapNodeRelationSet;
 
     _reference;
     _current;
@@ -127,32 +130,49 @@ void Mapper::preemptCB(){
         saveLocalMap(*lmap);
     }
 
-    cerr << "Local maps: " << _local_maps->size() << endl;
-
-    std::tr1::shared_ptr<LocalMap3D> current_map_ptr(lmap);
+    std::tr1::shared_ptr<Pose3DMapNode> current_map_ptr(lmap);
 
     if (_local_maps) {
+        cerr << "adding local map to list!" << endl;
         _local_maps->push_back(current_map_ptr);
     }
-    _previous_local_map = _last_local_map;
-    _last_local_map = current_map_ptr;
 
-    if(! _local_maps->empty()){
-        cerr << "Checking connectivity!" << endl;
+    if(!_local_maps->empty()){
+        cerr << endl << "Checking connectivity for " << _local_maps->size() << " local maps!" << endl;
         for(Pose3DMapNodeList::iterator it = _local_maps->begin(); it != _local_maps->end(); it++){
             LocalMap3D* lmap2 = dynamic_cast<LocalMap3D*> (it->get());
-            if(!same(lmap,lmap2) && closeEnough(lmap,lmap2) && !alreadyConnected(lmap,lmap2))
-                if(addEdge(lmap,lmap2)) {
-                    Pose3DPose3DMapNodeRelation* rel = new Pose3DPose3DMapNodeRelation(lmap->estimate().inverse()*lmap2->estimate());
+            if(lmap2){
+                cerr << "From: " << lmap << " To: " << lmap2 << endl;
+
+                if(!same(lmap,lmap2) &&
+                        closeEnough(lmap,lmap2) &&
+                        !alreadyConnected(lmap,lmap2) &&
+                        addEdge(lmap,lmap2)) {
+
+                    cerr << "Adding edge!" << endl;
+                    cerr << "Lmap1: " << lmap << " class name: " << lmap->className();
+                    cerr << " Lmap2: " << lmap2 << " class name: " << lmap2->className() << endl;
+                    std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>
+                            rel (new Pose3DPose3DMapNodeRelation(lmap->estimate().inverse()*lmap2->estimate()));
                     rel->setFrom(lmap);
                     rel->setTo(lmap2);
-                    _local_maps_relations->insert(std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>(rel));
-                    if (_serializer)
+                    cerr << "From: " << rel->from();
+                    cerr << " To: " << rel->to() << endl;
+
+                    if (_serializer){
                         _serializer->writeObject(*rel);
-                }
+                        cerr << "writing local map relation to disk" << endl;
+                    }
+
+                    if (_local_maps_relations){
+                        _local_maps_relations->insert(rel);
+                        cerr << "adding local map relation to list!" << endl;
+                    }
+
+                } else
+                    cerr << "Local maps are not connected!" << endl;
+            }
         }
-    } else {
-        cerr << "Empty local maps list!" << endl;
     }
 
     _nodes->clear();
@@ -350,18 +370,19 @@ LocalMap3D *Mapper::makeLocalMap(){
     Eigen::Isometry3f origin = _nodes->middlePose();
     Eigen::Isometry3f invT = origin.inverse();
     LocalMap3D* local_map = new LocalMap3D(origin);
-    //    local_map->nodes()=*_nodes;
-    //    local_map->relations()=*_relations;
-    //    for (MapNodeList::iterator it = _nodes->begin();
-    //         it!= _nodes->end(); it++) {
-    //        MapNode* node = it->get();
-    //        node->parents().insert(local_map);
-    //        node->setTransform(invT*node->transform());
-    //    }
-    //    for (BinaryNodeRelationSet::iterator it= _relations->begin(); it!=_relations->end(); it++) {
-    //        BinaryNodeRelation* rel = it->get();
-    //        rel->setParent(local_map);
-    //    }
+
+    for(Pose3DMapNodeList::iterator it = _nodes->begin(); it != _nodes->end(); ++it){
+        Pose3DMapNode* node = it->get();
+        node->parents().insert(local_map);
+        node->setEstimate(invT*node->estimate());
+        local_map->nodes().insert(node);
+    }
+    for(Pose3DPose3DMapNodeRelationSet::iterator it = _relations->begin(); it != _relations->end(); ++it){
+        Pose3DPose3DMapNodeRelation* rel = it->get();
+        rel->setOwner(local_map);
+        local_map->relations().insert(rel);
+    }
+
     local_map->setCloud(new Cloud3D(_reference));
     local_map->cloud()->transformInPlace(invT*_global_transform);
 
@@ -375,14 +396,15 @@ LocalMap3D *Mapper::makeLocalMap(){
 }
 
 void Mapper::saveLocalMap(LocalMap3D &lmap){
-    for (MapNodePtrSet::iterator tt = lmap.nodes().begin();
-         tt!=lmap.nodes().end(); tt++){
-        Pose3DMapNode* n = dynamic_cast<Pose3DMapNode*> (*tt);
+
+    for (MapNodePtrSet::iterator it = lmap.nodes().begin();
+         it!=lmap.nodes().end(); ++it){
+        Pose3DMapNode* n = dynamic_cast<Pose3DMapNode*> (*it);
         _serializer->writeObject(*n);
     }
 
     for (MapNodeRelationPtrSet::iterator it = lmap.relations().begin();
-         it!=lmap.relations().end(); it++){
+         it!=lmap.relations().end(); ++it){
         Pose3DPose3DMapNodeRelation* r = dynamic_cast<Pose3DPose3DMapNodeRelation*> (*it);
         _serializer->writeObject(*r);
     }
@@ -397,10 +419,42 @@ void Mapper::saveCameras(CameraInfoManager &manager){
     }
 }
 
-bool Mapper::addEdge(LocalMap3D* lmap1, LocalMap3D* lmap2){
-    Eigen::Vector3f origin = Eigen::Vector3f::Zero();
-    Eigen::Vector3i dimensions = Eigen::Vector3i::Zero();
+//bool Mapper::addEdge(LocalMap3D* lmap1, LocalMap3D* lmap2){
 
+//    cerr << "Sparse grid based connectivity check!" << endl;
+
+//    Cloud3D* cloud = new Cloud3D;
+//    Cloud3D transformed_cloud;
+//    lmap1->cloud()->transform(transformed_cloud,lmap1->estimate());
+//    cloud->add(transformed_cloud);
+//    int size1 = cloud->size();
+//    transformed_cloud.clear();
+//    lmap2->cloud()->transform(transformed_cloud,lmap2->estimate());
+//    cloud->add(transformed_cloud);
+
+//    Eigen::Vector3f lower,higher;
+//    cloud->computeBoundingBox(lower,higher);
+//    _resolution=0.05;
+//    Eigen::Vector3i dimensions = ((higher-lower)/_resolution).cast<int> ();
+//    SparseGrid grid (_resolution,lower,dimensions,size1);
+
+//    cerr << "Input cloud has " << cloud->size() << " points." << endl;
+//    cerr << "Resolution: " << grid.resolution() << endl;
+//    cerr << "Origin: " << grid.origin().transpose() << endl;
+//    cerr << "Dimensions: " << grid.dimensions() << endl;
+//    grid.insertCloud(*cloud);
+//    grid.extractCloud();
+//    grid.extractSurface();
+
+//    return grid.checkConnectivity(_connectivity_threshold);
+
+//    return true;
+//}
+
+bool Mapper::addEdge(LocalMap3D* lmap1, LocalMap3D* lmap2){
+    int count = 0;
+    SurfaceExtractor extractor;
+    extractor.setResolution(_resolution);
     Cloud3D* cloud = new Cloud3D;
     Cloud3D transformed_cloud;
     lmap1->cloud()->transform(transformed_cloud,lmap1->estimate());
@@ -409,18 +463,36 @@ bool Mapper::addEdge(LocalMap3D* lmap1, LocalMap3D* lmap2){
     transformed_cloud.clear();
     lmap2->cloud()->transform(transformed_cloud,lmap2->estimate());
     cloud->add(transformed_cloud);
+    extractor.compute(cloud);
+    const IntImage indices = extractor.indices();
+    const UnsignedCharImage classified = extractor.classified();
+    for (int r=0; r<indices.rows; r++)
+        for (int c=0; c<indices.cols; c++) {
+            int idx1 = indices.at<int>(r,c);
+            if (idx1<0)
+                continue;
+            if(classified.at<unsigned char>(r,c) != 0)
+                continue;
+            int rmin = r-1<0?0:r-1;
+            int rmax = r+1>indices.rows-1?indices.rows-1:r+1;
+            int cmin = c-1<0?0:c-1;
+            int cmax = c+1>indices.cols-1?indices.cols-1:c+1;
+            for (int rr =rmin; rr<=rmax; rr++)
+                for (int cc =cmin; cc<=cmax; cc++)
+                    if (rr!=r || cc!=c) {
+                        int idx2 = indices.at<int>(rr,cc);
+                        if (idx2<0)
+                            continue;
+                        if(classified.at<unsigned char>(rr,cc) != 0)
+                            continue;
+                        if((idx1 < size1)^(idx2 < size1)){
+                            count++;
+                            return true;
+                        }
+                    }
+        }
 
-    Eigen::Vector3f lower,higher;
-    cloud->computeBoundingBox(lower,higher);
-    origin = lower - Eigen::Vector3f(5*_resolution,5*_resolution,5*_resolution);
-    dimensions = (((higher + Eigen::Vector3f(5*_resolution,5*_resolution,5*_resolution))-lower)/_resolution).cast<int> ();
-    SparseGrid grid (_resolution,origin,dimensions,size1);
-    grid.insertCloud(*cloud);
-    grid.extractCloud();
-    grid.extractSurface();
-
-    return grid.checkConnectivity(_connectivity_threshold);
-
+    return false;
 }
 
 }

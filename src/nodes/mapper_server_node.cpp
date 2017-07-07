@@ -192,8 +192,9 @@ int main(int argc, char **argv) {
                                                                                  Mapper::PROCESSING_DONE,
                                                                                  100, nh, broadcaster);
     ros::spin();
+    return 0;
 
-    saveCloud(output_filename,cloud_count);
+    //saveCloud(output_filename,cloud_count);
 
 }
 

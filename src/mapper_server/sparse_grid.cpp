@@ -36,6 +36,9 @@ void SparseGrid::insertCloud(const Cloud3D &cloud){
             insert(it,std::pair<Eigen::Vector3i,Cell*>(idx,cell));
         }
     }
+
+    cerr << "Sparse grid has " << size() << " cells" << endl;
+
 }
 
 Cloud3D SparseGrid::extractCloud(){
@@ -56,6 +59,9 @@ Cloud3D SparseGrid::extractCloud(){
         centroid /= points.size();
         _cloud.push_back(RichPoint3D(centroid,Eigen::Vector3f::Zero(),0,Eigen::Vector3f (1,0,0)));
     }
+
+    cerr << "Downsampled cloud has " << _cloud.size() << " points" << endl;
+
     return _cloud;
 }
 
@@ -91,9 +97,9 @@ UnsignedCharImage SparseGrid::extractSurface(){
         Eigen::Vector3f projected_point = (point.point() - bottom)*_inverse_resolution;
         int row = projected_point.y();
         int col = projected_point.x();
-        if(row>=indices.rows || row<0)
+        if(row>=rows || row<0)
             continue;
-        if(col>=indices.cols || col<0)
+        if(col>=cols || col<0)
             continue;
         float& height = elevations.at<float> (row,col);
         int& idx = indices.at<int> (row,col);
@@ -109,9 +115,9 @@ UnsignedCharImage SparseGrid::extractSurface(){
         Eigen::Vector3f projected_point = (point.point() - bottom)*_inverse_resolution;
         int row = projected_point.y();
         int col = projected_point.x();
-        if(row>=indices.rows || row<0)
+        if(row>=rows || row<0)
             continue;
-        if(col>=indices.cols || col<0)
+        if(col>=cols || col<0)
             continue;
         float& height = elevations.at<float> (row,col);
         int& idx = indices.at<int> (row,col);
@@ -125,8 +131,8 @@ UnsignedCharImage SparseGrid::extractSurface(){
         height = z;
     }
 
-    for (int r=0; r<indices.rows; r++)
-        for (int c=0; c<indices.cols; c++) {
+    for (int r=0; r<rows; r++)
+        for (int c=0; c<cols; c++) {
             int idx = indices.at<int>(r,c);
             if (idx==-1)
                 continue;
@@ -137,8 +143,8 @@ UnsignedCharImage SparseGrid::extractSurface(){
             _classified.at<unsigned char>(r,c)=0;
         }
 
-    for (int r=1; r<_classified.rows-1; r++)
-        for (int c=1; c<_classified.cols-1; c++) {
+    for (int r=1; r<rows-1; r++)
+        for (int c=1; c<cols-1; c++) {
             unsigned char & cell=_classified.at<unsigned char>(r,c);
             if (cell!=255)
                 continue;
@@ -154,16 +160,16 @@ UnsignedCharImage SparseGrid::extractSurface(){
             }
         }
 
-    for (int r=0; r<indices.rows; r++)
-        for (int c=0; c<indices.cols; c++) {
+    for (int r=0; r<rows; r++)
+        for (int c=0; c<cols; c++) {
             int idx = indices.at<int>(r,c);
             if (idx<0)
                 continue;
             unsigned char & cell=_classified.at<unsigned char>(r,c);
             if(cell==0){
                 const RichPoint3D& point = _cloud.at(idx);
-                Eigen::Vector3i idx = toGrid(point.point());
-                at(idx)->setGround(true);
+                Eigen::Vector3i index = toGrid(point.point());
+                at(index)->setGround(true);
             }
         }
 
@@ -183,9 +189,9 @@ bool SparseGrid::checkConnectivity(float connectivity_threshold){
                 overlap_count++;
         }
     }
-//    cerr << "Overlap: " << overlap_count << endl;
-//    cerr << "Ground: " << ground_count << endl;
-//    cerr << "Connection percentage: " << overlap_count/ground_count << endl;
+    cerr << "Overlap: " << overlap_count << endl;
+    cerr << "Ground: " << ground_count << endl;
+    cerr << "Connection percentage: " << overlap_count/ground_count << endl;
     return (overlap_count/ground_count > connectivity_threshold) ? true : false;
 }
 
