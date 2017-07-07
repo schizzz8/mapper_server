@@ -65,7 +65,7 @@ Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_
     _serializer = ser;
 
     _distance_threshold = 20;
-    _resolution = 0.025;
+    _resolution = 0.01;
     _connectivity_threshold = 0.01;
 
     _trajectory_min_translation = 0.05;
