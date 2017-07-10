@@ -73,9 +73,9 @@ Mapper::Mapper (string name, srrg_boss::Serializer *ser, BaseProjector* p):_as(_
     _local_maps = 0;
     _local_maps_relations = 0;
     _nodes = new Pose3DMapNodeList;
-    _relations = new Pose3DPose3DMapNodeRelationSet;
+    _relations = new Pose3DBinaryNodeRelationSet;
     _local_maps = new Pose3DMapNodeList;
-    _local_maps_relations = new Pose3DPose3DMapNodeRelationSet;
+    _local_maps_relations = new Pose3DBinaryNodeRelationSet;
 
     _reference;
     _current;
@@ -152,8 +152,8 @@ void Mapper::preemptCB(){
                     cerr << "Adding edge!" << endl;
                     cerr << "Lmap1: " << lmap << " class name: " << lmap->className();
                     cerr << " Lmap2: " << lmap2 << " class name: " << lmap2->className() << endl;
-                    std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>
-                            rel (new Pose3DPose3DMapNodeRelation(lmap->estimate().inverse()*lmap2->estimate()));
+                    std::tr1::shared_ptr<Pose3DBinaryNodeRelation>
+                            rel (new Pose3DBinaryNodeRelation(lmap->estimate().inverse()*lmap2->estimate()));
                     rel->setFrom(lmap);
                     rel->setTo(lmap2);
                     cerr << "From: " << rel->from();
@@ -248,9 +248,9 @@ void Mapper::processFrame(const RawDepthImage& depth,
     Pose3DMapNode* previous_node =  (_nodes && _nodes->size()) ? _nodes->rbegin()->get() : 0;
     _nodes->addElement(new_node);
 
-    Pose3DPose3DMapNodeRelation* rel=makeNodesRelation(new_node, previous_node);
+    Pose3DBinaryNodeRelation* rel=makeNodesRelation(new_node, previous_node);
     if (rel) {
-        _relations->insert(std::tr1::shared_ptr<Pose3DPose3DMapNodeRelation>(rel));
+        _relations->insert(std::tr1::shared_ptr<Pose3DBinaryNodeRelation>(rel));
     }
 
     _current.clear();
@@ -351,10 +351,10 @@ Pose3DMapNode *Mapper::makeNode(){
     return new_node;
 }
 
-Pose3DPose3DMapNodeRelation *Mapper::makeNodesRelation(Pose3DMapNode *new_node, Pose3DMapNode *previous_node){
+Pose3DBinaryNodeRelation *Mapper::makeNodesRelation(Pose3DMapNode *new_node, Pose3DMapNode *previous_node){
     if (! _relations || ! previous_node)
         return 0;
-    Pose3DPose3DMapNodeRelation* rel = new Pose3DPose3DMapNodeRelation(previous_node->estimate().inverse()*new_node->estimate());
+    Pose3DBinaryNodeRelation* rel = new Pose3DBinaryNodeRelation(previous_node->estimate().inverse()*new_node->estimate());
     rel->setFrom(previous_node);
     rel->setTo(new_node);
     
@@ -377,8 +377,8 @@ LocalMap3D *Mapper::makeLocalMap(){
         node->setEstimate(invT*node->estimate());
         local_map->nodes().insert(node);
     }
-    for(Pose3DPose3DMapNodeRelationSet::iterator it = _relations->begin(); it != _relations->end(); ++it){
-        Pose3DPose3DMapNodeRelation* rel = it->get();
+    for(Pose3DBinaryNodeRelationSet::iterator it = _relations->begin(); it != _relations->end(); ++it){
+        Pose3DBinaryNodeRelation* rel = it->get();
         rel->setOwner(local_map);
         local_map->relations().insert(rel);
     }
@@ -403,9 +403,9 @@ void Mapper::saveLocalMap(LocalMap3D &lmap){
         _serializer->writeObject(*n);
     }
 
-    for (MapNodeRelationPtrSet::iterator it = lmap.relations().begin();
+    for (BinaryNodeRelationPtrSet::iterator it = lmap.relations().begin();
          it!=lmap.relations().end(); ++it){
-        Pose3DPose3DMapNodeRelation* r = dynamic_cast<Pose3DPose3DMapNodeRelation*> (*it);
+        Pose3DBinaryNodeRelation* r = dynamic_cast<Pose3DBinaryNodeRelation*> (*it);
         _serializer->writeObject(*r);
     }
     // write the local map

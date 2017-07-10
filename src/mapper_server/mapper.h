@@ -152,7 +152,7 @@ public:
     inline bool referenceGood() const {return _reference_good;}
 
     srrg_core_map_2::Pose3DMapNodeList* nodes() {return _nodes;}
-    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* relations() { return _relations;}
+    srrg_core_map_2::Pose3DBinaryNodeRelationSet* relations() { return _relations;}
     void setNodes(srrg_core_map_2::Pose3DMapNodeList* nodes_) {_nodes = nodes_;}
 
     // min translation between two trajectory nodes
@@ -194,11 +194,11 @@ protected:
 
     srrg_boss::Serializer* _serializer;
     srrg_core_map_2::Pose3DMapNodeList* _nodes;
-    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _relations;
+    srrg_core_map_2::Pose3DBinaryNodeRelationSet* _relations;
     float _trajectory_min_translation;
     float _trajectory_min_orientation;
     srrg_core_map_2::Pose3DMapNodeList* _local_maps;
-    srrg_core_map_2::Pose3DPose3DMapNodeRelationSet* _local_maps_relations;
+    srrg_core_map_2::Pose3DBinaryNodeRelationSet* _local_maps_relations;
 
     float _resolution;
     float _distance_threshold;
@@ -238,7 +238,7 @@ protected:
     EventTriggerMap _triggers;
 
     srrg_core_map_2::Pose3DMapNode* makeNode();
-    srrg_core_map_2::Pose3DPose3DMapNodeRelation* makeNodesRelation(srrg_core_map_2::Pose3DMapNode* new_node,
+    srrg_core_map_2::Pose3DBinaryNodeRelation* makeNodesRelation(srrg_core_map_2::Pose3DMapNode* new_node,
                                                                     srrg_core_map_2::Pose3DMapNode* previous_node);
     srrg_core_map_2::LocalMap3D* makeLocalMap();
     void saveLocalMap(srrg_core_map_2::LocalMap3D& lmap);
@@ -264,7 +264,7 @@ protected:
         if(_local_maps_relations->empty())
             return false;
 
-        for(srrg_core_map_2::Pose3DPose3DMapNodeRelationSet::iterator kt = _local_maps_relations->begin();
+        for(srrg_core_map_2::Pose3DBinaryNodeRelationSet::iterator kt = _local_maps_relations->begin();
             kt != _local_maps_relations->end(); kt++)
             if((*kt)->from() == lmap1 && (*kt)->to() == lmap2 ||
                     (*kt)->from() == lmap2 && (*kt)->to() == lmap1) {
